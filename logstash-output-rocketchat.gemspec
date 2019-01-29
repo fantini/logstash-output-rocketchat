@@ -3,7 +3,7 @@ Gem::Specification.new do |s|
   s.version       = '0.1.0'
   s.licenses      = ['Apache-2.0']
   s.summary       = 'Writes events to Rocketchat.'
-  s.description   = 'Rocket.Chat is the leading open source team chat software solution. Free, unlimited and completely customizable with on-premises and SaaS cloud hosting. This Logstash plugin allows to send events to Rocketchat''s channels.'
+  s.description   = 'Rocket.Chat is the leading open source team chat software solution. Free, unlimited and completely customizable with on-premises and SaaS cloud hosting. This Logstash plugin allows to send events to Rocketchat channelsi and groups.' 
   s.homepage      = 'https://github.com/ffknob/logstash-output-rocketchat'
   s.authors       = ['ffknob']
   s.email         = 'ffknob@tce.rs.gov.br'

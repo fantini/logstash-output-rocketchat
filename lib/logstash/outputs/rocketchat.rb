@@ -1,9 +1,30 @@
 # encoding: utf-8
 require "logstash/outputs/base"
+require "logstash/namespace"
 
 # Rocket.Chat is free, unlimited and open source. Replace email, HipChat & Slack with the ultimate team chat software solution.
 #
 # This Logstash output plugin allows to send events as messages to channels and groups of a Rocketchat server.
+#
+# ==== Example
+#
+# [source,ruby]
+# ----------------------------------
+# input {
+#   stdin { } 
+# }
+# output {
+#   rocketchat {
+#     host => "chat.deathstar.sw"
+#     port => "3000"
+#     username => "rc_integrations"
+#     password => "p@$$w0rd"
+#     channels => ["management", "operations", "rh"]
+#   }
+# }
+# ----------------------------------
+#
+
 
 # An rocketchat output that does nothing.
 class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
@@ -53,9 +74,9 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
 
   public
   def receive(event)
-    m = __method__.to_s
-
 	  return unless output?(event)
+
+    m = __method__.to_s
 
     message = event.sprintf(@format)
 
