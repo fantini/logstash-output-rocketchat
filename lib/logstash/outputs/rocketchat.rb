@@ -20,6 +20,7 @@ require "logstash/namespace"
 #     username => "rc_integrations"
 #     password => "p@$$w0rd"
 #     channels => ["management", "operations", "rh"]
+#     content => "My message: %{message}"
 #   }
 # }
 # ----------------------------------
@@ -51,8 +52,8 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
   # A list of channels/groups to which the messages will be posted 
   config :channels, :validate => :string, :required => true, :list => true
 
-  # Format of the message (content)
-  config :format, :validate => :string, :default => "%{message}"
+  # Message's content to be sent
+  config :content, :validate => :string, :default => "%{message}"
 
   concurrency :single
 
@@ -63,12 +64,18 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
     require 'rest-client'
     require 'cgi'
     require 'json'
-	
+  
+    # Rocketchat's API
+    # More information in https://rocket.chat/docs/developer-guides/rest-api/
 	  raw_url = "#{@scheme}://#{@host}:#{@port}#{@api}"
-	  @url = ::LogStash::Util::SafeURI.new(raw_url)
+    @url = ::LogStash::Util::SafeURI.new(raw_url)
+    
+    # We'll keep the rooms' ids so we don't need to ask again for each event
+    @room_ids = Hash.new
 
 	  @logger.info("[#{m}] URL #{@url}, Username: #{@username}, Channel: #{@channels}")
 
+    # We need to grab a token from Rocketchat  
     auth()
   end # def register
 
@@ -78,8 +85,10 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
 
     m = __method__.to_s
 
-    message = event.sprintf(@format)
+    # The message itself
+    message = event.sprintf(@content)
 
+    # To which channels/groups should the message be sent
     @channels.map {|channel|
       if send_message(channel, message)
         @logger.debug("[#{m}] Message sent to room #{channel}")
@@ -94,16 +103,19 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
   def auth()
 	  m = __method__.to_s
 
-	  @logger.debug("[i#{m}] Trying to authenticate")
+	  @logger.debug("[#{m}] Trying to authenticate")
 
+    # https://rocket.chat/docs/developer-guides/rest-api/authentication/login/
     endpoint = "#{@url}/login"
 
+    # We have to send a valid username/password in order to get a token
     payload = Hash.new
     payload['username'] = @username 
     payload['password'] = @password 
 
 	  @logger.debug("[#{m}] Endpoint: #{endpoint}, payload: #{payload}")
 
+    # Go get this token...
     body = make_request('POST', endpoint, nil, payload)
 
 	  if body.nil?
@@ -111,7 +123,8 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
 	    return false
 	  else
       status = body['status']
-	    if status == 'success'
+      if status == 'success'
+        # If it succeds, then we'll have an user id. and an authentication token
         @userId = body['data']['userId']
         @authToken = body['data']['authToken']
 	      return true
@@ -123,20 +136,32 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
   def get_room_id(room_name)
 	  m = __method__.to_s
 
-	  @logger.debug("[#{m}] Trying to get the room id for room #{room_name}")
+	  @logger.debug("[#{m}] Trying to get the room's id for room #{room_name}")
   
+    # Have we got the room's id already?
+    if @room_ids.key?(room_name)
+      @logger.debug("[#{m}] Already got the id for room #{room_name}, no need to ask Rocketchat server")
+      return @room_ids[room_name]
+    end
+
+    # https://rocket.chat/docs/developer-guides/rest-api/channels/info/
     endpoint = "#{@url}/channels.info"
-	  body = make_request('GET', endpoint, {:roomName => room_name}, nil)
+    body = make_request('GET', endpoint, {:roomName => room_name}, nil)
 
 	  if body.nil?
       @logger.error("[#{m}] An error occurred trying to get the room id (channels endpoint) for room #{room_name}")
 	  else
 	    success = body['success']
       if success
-	      return body['channel']['_id']
+        # It's a channel... return the room's id
+        @logger.debug("[#{m}] Room #{room_name} is a channel, saving its id so we don't need to ask for it anymore")
+        @room_ids[:room_name] = body['channel']['_id']
+        @logger.debug("[#{m}] Rooms' ids: #{@room_ids}")
+        return body['channel']['_id']
 		  else
         @logger.info("[#{m}] Couldn't get the room id for room #{room_name} through the channels endpoint, trying with the groups endpoint")
 
+        # https://rocket.chat/docs/developer-guides/rest-api/groups/info/
         endpoint = "#{@url}/groups.info"
 	      body = make_request('GET', endpoint, {:roomName => room_name}, nil)
 
@@ -144,7 +169,11 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
         	@logger.error("[#{m}] An error occurred trying to get the room id (groups endpoint) for room #{room_name}")
 		    else
 		      success = body['success']
-			    if success
+          if success
+            # It's a group... return the room's id
+            @logger.debug("[#{m}] Room #{room_name} is a group, saving its id so we don't need to ask for it anymore")
+            @room_ids[:room_name] = body['group']['_id']
+            @logger.debug("[#{m}] Rooms' ids: #{@room_ids}")
 		  	    return body['group']['_id']
 			    else
 			      return nil
@@ -160,10 +189,12 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
   def send_message(room_name, message)
 	  m = __method__.to_s
 
-	  @logger.debug("[#{m}] Trying to send message to room #{room_name}")
+	  @logger.debug("[#{m}] Trying to a send message to room #{room_name}")
   
+    # https://rocket.chat/docs/developer-guides/rest-api/chat/sendmessage/
     endpoint = "#{@url}/chat.sendMessage"
 
+    # Go get the room's id
     room_id = get_room_id(room_name)
 
     if room_id
@@ -178,16 +209,20 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
         @logger.error("[#{m}] An error occurred trying to send message to the Rocketchat server, room #{room_name}")
         return false
       else
-        status = body['status']
-        if status == 'success'
+        success = body['success']
+        if success
+          # Message sent
           return true
+        else
+          # Something went wrong
+          return false
         end
       end      
     else
-      @logger.warn("[#{m}] An error occurred trying to get the room id for room #{room_name}. Are you sure the user #{@user} is sunscripted to this room?")
+      @logger.warn("[#{m}] An error occurred trying to get the room id for room #{room_name}. Are you sure the user #{@user} is subscribed to this room?")
     end
     
-    return nil
+    return false
   end # def send_message
 
   public
