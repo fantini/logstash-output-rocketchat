@@ -266,8 +266,7 @@ class LogStash::Outputs::Rocketchat < LogStash::Outputs::Base
 			      :'X-Auth-Token' => @authToken || '',
 		  	    :'X-User-Id' => @userId || '' ,
           	:accept => "application/json",
-          	:'User-Agent' => "logstash-output-rocketchat",
-          	:content_type => @content_type
+          	:'User-Agent' => "logstash-output-rocketchat"
 		      }) { |response, request, result, &block|
             if response.code != 200
               @logger.error("[#{m}] An error occurred trying to request from the Rocketchat's server API: #{response.code}")

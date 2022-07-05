@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name          = 'logstash-output-rocketchat'
-  s.version       = '0.1.3'
+  s.version       = '0.1.4'
   s.licenses      = ['Apache-2.0']
   s.summary       = 'Sends messages to a Rocketchat server with information from the events.'
   s.description   = 'Rocket.Chat is the leading open source team chat software solution. Free, unlimited and completely customizable with on-premises and SaaS cloud hosting. This Logstash plugin allows to send events to Rocketchat channels and groups.' 
